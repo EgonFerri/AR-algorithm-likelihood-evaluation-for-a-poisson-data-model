@@ -1,0 +1,581 @@
+---
+title: 'Stat4DS2 HOMEWORK #1'
+author: "FERRI EGON 1700962"
+output:
+  pdf_document:
+    toc: yes
+  html_document:
+    fig_height: 6.5
+    fig_width: 10
+    theme: yeti
+    toc: yes
+---
+```{r message=FALSE, warning=FALSE, include=FALSE}
+require('viridis',quietly = T)
+require('psych',quietly = T)
+```
+
+-------------
+
+#1) A-R ALGORITHM
+
+
+### a) Show how it is possible to simulate from a standard Normal distribution using pseudo-random deviates from a standard Cauchy and the A-R algorithm
+
+In general, using the A-R algorithm, we want to simulate $Xi ∼ f_X$ using an auxiliary function $f_{AUX}$ that satisfies this boundedness condition:
+$$f_X(x) ≤ kf_{AUX}(x)\ \forall \ x \in \mathcal Y $$
+The basic idea is to simulate $Y_1, Y_2, ..., Y_n \ iid$ from $f_{AUX}$ (a probability density with support $\mathcal Y$) but to keep just a subset of these simulated values according to a random (acceptance-rejection) rule which tells us when we should accept it or not according the intuition that we should penalize and reject more often those values which have low density $f_X$ (compared to the candidate $f_{AUX}$).
+
+In practice we take pseudo-random from a candidate distribution which is different from our target and keep as final $X$ only a subset of the simulated $Y$ using a random rule based on an auxiliary experiment.
+
+For each $Y_i ∼ f_{AUX}$ we use an auxiliary experiment:
+$$Y\rightarrow\cases{Y^A \text{ if } E = A\\ \\ Y^R \text{ if } E = R}$$ 
+
+The proper experiment gives us subsets such that:
+
+  * The subset of the accepted $Y^A_i$ is a subset of independent random deviates.
+
+  * $Y^A$  has the desired target distribution $f_X(x)$.
+
+  * The number of accepted $Y^A_i$ , say $t$, is random and it it's less than or equal to the number of draws, say $T$, from the original distribution $f_{AUX}$. The final random size $T$ of random draws form the target depends on acceptance probability.
+  
+The auxiliary experiment is basically a Bernoulli random variable such that $E = A = 1$ and $E = R = 0$. Its distribution depends on the simulated $Y = y$ in the following sense:
+
+$$\mathbb P(E=1| Y=y)  = \frac{f_X(y)}{f_{AUX}(y)}  \in [0,1] \text{ (since} f_X(y) \leq f_{AUX}(y) \ \forall \ x \in \mathcal Y )$$
+In our particular case, we have to simulate from a standard Normal distribution using a standard Cauchy.
+
+Let's plot the two distributions to take a glance:
+
+```{r}
+
+cols=viridis(n=10)[1:10]
+  
+curve(dnorm(x), col=cols[1], lwd=2, ylim=c(0,1), xlim=c(-3,3), ylab = 'dnorm(x), dcauchy(x)')
+curve(dcauchy(x), lwd=2, add=T, col=cols[5])
+
+legend('topright', legend = c('standard normal distribution','standard cauchy distribution'),bty = 'n', col = c(cols[1], cols[5]), cex = 1, lwd = 8)
+title('standard normal vs standard cauchy')
+
+```
+
+To implement this scheme we have to find a suitable $k$. It's easy to find by trial and error that a $k=1.5$ would be too small, and that $k=1.6$ would be OK but not optimal.
+
+```{r}
+curve(dnorm(x), col=cols[1], lwd=2, ylim=c(0,1), xlim=c(-3,3), ylab = 'dnorm(x), dcauchy(x), kdcauchy(x)')
+curve(dcauchy(x), lwd=2, add=T, col=cols[5])      
+curve(1.6*(dcauchy(x)), lwd=2, add=T, col=cols[8], lty=5)
+curve(1.5*(dcauchy(x)), lwd=2, add=T, col=cols[9], lty=5)
+
+legend('topright', legend = c('standard normal distribution','standard cauchy distribution', '1.6*(standard cauchy)', '1.5*(standard cauchy)'),bty = 'n', col = c(cols[1], cols[5], cols[8], cols[9]), cex = 1, lwd = 8)
+title('k approached with trial and error')
+```
+
+We would like to have the optimal k, which means that we want the smallest suitable k, or the k that minimizes the distance(the difference between the integrals) between our auxiliary distribution and our target distribution. (The reason will be explained in a couple of answers).
+We can find it with a little bit of code:
+
+```{r}
+#function that returnes the distance between the two distros given k
+distance<- function(x, k=1.6){
+  normale=dnorm(x)
+  cauchyy=k*dcauchy(x)
+  return(cauchyy-normale)
+}
+
+#function that gives us the minimum distance between all (with a little bit of approximation)
+#the points of the two distribution for every k
+ksearch<-function(k){
+  k_try=k
+  x_grid=seq(-1,1,length=100000)
+  return(min(distance(x_grid,k_try)))
+}
+
+#our optimal k will be the k that minimize this function.
+k_star=uniroot(ksearch, c(1.5,1.6))$root
+print(k_star)
+
+
+```
+
+We can check that our optimal k truly minimize the "minimum" distance between the distributions.
+
+```{r}
+curve(distance(x, k = k_star), from = -2, to=2, col=cols[3], lwd=1.5)
+abline(h=0.00, col=cols[9], lwd=1.5)
+```
+
+From this plot it's not clear the behavior of the distance in the tail, so let's zoom out:
+
+```{r}
+curve(distance(x, k = k_star), from = -50, to=50, col=cols[3], lwd=1.5)
+abline(h=0.00, col=cols[9], lwd=1.5)
+
+```
+
+From this plot seems clear that the distance in the tail will approach zero without touching it(this asymptotic behavior would be the same for every k). So our optimal k can be confirmed.
+
+```{r}
+curve(dnorm(x), col=cols[1], lwd=2, ylim=c(0,1), xlim=c(-3,3), ylab = 'dnorm(x), dcauchy(x), kdcauchy(x)')
+curve(dcauchy(x), lwd=2, add=T, col=cols[5])      
+curve(k_star*(dcauchy(x)), lwd=2, add=T, col=cols[8], lty=5)
+
+legend('topright', legend = c('standard normal distribution','standard cauchy distribution', 'k_star(standard cauchy)'),bty = 'n', col = c(cols[1], cols[5], cols[8]), cex = 1, lwd = 8)
+title('optimal auxiliary Cauchy')
+```
+
+### b) Provide your R code for the implementation of the A-R
+
+```{r}
+#target function
+ef=function(x){
+  dnorm(x)
+}
+#auxiliary function
+q=function(x){
+  dcauchy(x)
+}
+#choose k
+k=k_star
+
+#simulation setting
+n_sim_aux=100000
+Y=c()
+E=c()
+
+#running the simulation
+for(i in 1:n_sim_aux){
+  Y[i]=rcauchy(1)
+  E[i]=rbinom(1,size=1,prob=ef(Y[i])/(k*q(Y[i])))
+}
+
+#keep only the values in the acceptance region
+X=Y[E==1]
+```
+
+Let's check if it works properly:
+
+```{r}
+summary(X)
+hist(X,prob=TRUE, col = cols[3], border = 'white', main='Histogram of accepted values', breaks = 40)
+curve(dnorm,add=TRUE,col=cols[6],lwd=3, lty=6)
+
+legend('topleft', legend = c('standard normal distribution'),bty = 'n', col = c(cols[6]), cex = 1, lwd = 8)
+```
+
+### c) Evaluate numerically (approximately by MC) the acceptance probability
+
+```{r}
+X=Y[E==1]
+
+prop.table(table(E))
+```
+
+To get a better approximation, we can run the simulation more times and take an average.
+
+```{r}
+
+set.seed(123)
+
+res=c()
+
+for(j in 1:10){
+  for(i in 1:n_sim_aux){
+    Y[i]=rcauchy(1)
+    E[i]=rbinom(1,size=1,prob=ef(Y[i])/(k*q(Y[i])))
+  }
+  
+  
+  X=Y[E==1]
+  
+  res[j]=prop.table(table(E))[2]
+}
+
+mean(res)
+```
+
+### d) Write your theoretical explanation about how you have conceived your Monte Carlo estimate of the acceptance probability
+
+Let us start from the conditional acceptance probability $\mathbb P(E = 1∣Y = y)$.
+
+By construction:
+
+$$\mathbb P(E=1|Y=y)  = \frac{f_X(y)}{kf_{AUX}(y)}$$
+
+So 
+
+$$\mathbb P(E=1) = \int_0^1 {\mathbb P(E=1|Y=y)}{f_{AUX}(y)}dy =$$ 
+$$ \int_0^1 \frac{f_X(y)}{kf_{AUX}(y)} f_{AUX}(y)dy =$$
+$$ \int_0^1 \frac{f_X(y)}{k} dy =$$
+$$\frac{1}{k}\overbrace{\int_0^1 f_X(y)dy}^{\text{ 1}} = {\frac{1}{k}}$$
+
+So we know that the probability of a value to be accepted is the inverse of our scaling constant k.
+That's the reason why we want the minimum suitable k; indeed it can be interpreted as the "ratio" of the algorithm; the higher the k, the slower the algorithm (since more value will be discarded).
+
+Let's check it numerically:
+
+
+```{r}
+1/k
+```
+
+This is the analytic computation of probability of acceptance, but can be also reached (at least an approximation of it) by simulation (as done in the previous answer).
+Since $Y^A \text{ if } E = A = 1$
+$$\mathbb P(E = 1)= \mathbb P(Y^{A})\underbrace \longrightarrow_{\color{orchid}{for\  n \rightarrow \infty}} \frac{1}{n}\sum_{i=1}^{n}Y^{A}$$
+
+Recalling our previous result:
+
+```{r}
+mean(res)
+```
+
+Confirms our analytic result.
+
+### e) Save the rejected simulations and provide a graphical representation of the empirical distribution (histogram or density estimation)
+
+
+```{r}
+X_reject=Y[E==0]
+hist(X_reject, col = cols[3], border = 'white', breaks=1000000, xlim=c(-10, 10), prob=T)
+summary(X_reject)
+```
+
+
+### f) Derive the underlying density corresponding to the rejected random variables and try to compare it with the empirical distribution
+
+The underlying density is given by $$ k \cdot f_{cauchy} - f_{norm} $$
+
+
+The integral does not sum up to one (so this is not a proper density), and we can verify it 
+
+Theoretically:
+
+$$\int k \cdot {f_{C}(x)} - f_{N}(x)\ dx = \int k \cdot {f_{C}(x)}\ dx \  - \int f_N(x) \ dx =k \cdot  \overbrace{\int f_C(x)\ dx}^{\text{1}} \  - \overbrace{\int f_N(x)\ dx}^{\text{1}} =  k - 1 $$
+
+Programmatically: 
+  
+```{r}
+distance <- function(x, k=k_star){
+  normale=dnorm(x)
+  cauchyy=k*dcauchy(x)
+  return(cauchyy-normale)
+}
+
+integrate(f= distance, lower = -50000, upper=50000)
+```
+
+```{r}
+k_star - 1
+```
+
+
+And graphically:
+
+```{r}
+hist(X_reject, col = cols[3], border = 'white', breaks=1000000, xlim=c(-10, 10), prob=T)
+curve(distance(x),add=TRUE,col=cols[10],lwd=3, lty=6)
+```
+
+To get a proper density function we should normalize the "distance" function with a factor of $k - 1$ :
+
+```{r}
+my_density <- function(x) distance(x)/(k_star-1)
+integrate(f= my_density, lower = -90000, upper=90000)
+```
+
+```{r}
+hist(X_reject, col = cols[3], border = 'white', breaks=1000000, xlim=c(-10, 10), prob=T)
+curve(distance(x),add=TRUE,col=cols[10],lwd=3, lty=6)
+curve(my_density(x), add=T, col=cols[6], lwd=3)
+
+legend('topright', legend = c('non-normalized','normalized density funct'),bty = 'n', col = c(cols[10], cols[6]), cex = 1, lwd = 8)
+```
+
+-------------
+
+#2) MARGINAL LIKELIHOOD EVALUATION FOR A POISSON DATA MODEL 
+
+*Simulate 10 observations from a known Poisson distribution with expected value 2. Use set.seed(123) before starting your simulation. Use a Gamma(1,1) prior distribution and compute the corresponding marginal likelihood in 3 differnt ways.*
+
+```{r}
+set.seed(123)
+data= rpois(n=10, lambda = 2)
+prior<- function(x) dgamma(x, 1, 1)
+plot(prop.table(table(data)), col=cols[3], ylim=c(0, 1), xlim=c(-0.2,4), lwd=3)
+curve(prior, add=T, col=cols[9], lwd=3)
+legend('topright', legend = c('prior'),bty = 'n', col = c(cols[9]), cex = 1, lwd = 8)
+```
+
+### a) Exact analytic computation
+
+The marginal likelihood is the likelihood $\mathcal{L}y(\theta) = f(y∣\theta)$ integrated (hence marginalized) with respect to the prior distribution $\pi(\theta)$:
+
+$$m(y) = {\int_{\Theta}}\color{green}{f(y|\theta)}\color{blue}{\pi(\theta)}d\theta$$
+
+likelihood:
+
+$$\color{green}{\mathcal{L}_{y_{i...n}}(\theta) = \prod_{i=1}^n f(y_i|\theta) = \frac{1}{{\prod_{i=1}^n y_i!}}e^{-n\theta}\theta^{\sum_{i=1}^ny_i}}$$
+
+prior distribution:
+
+$$\color{blue}{\pi(\theta) \sim Gamma(1,1) =\underbrace{{\frac{\beta^1}{\Gamma(1)}}}_1 \theta^{\ 1-1}e^{-\theta} = e^{-\theta}}$$
+
+hence our marginal likelihood:
+
+$$m(y) = \int_0^{\infty} \color{green}{\frac{1}{{\prod_{i=1}^n y_i!}}e^{-n\theta}\theta^{\sum_{i=1}^ny_i}} \color{blue}{e^{-\theta}} = {\frac{1}{{\prod_{i=1}^n y_i!}}} \int_0^{\infty} e^{\color{orange}{-(n+1)}\theta} \theta^\color{red}{\sum_{i=1}^ny_i}$$
+
+now if we exploit the fact that the integral of the gamma density sums up to one:
+
+$$\int_0^{\infty} {\frac {\beta ^{\alpha }}{\Gamma (\alpha )}}\theta ^{\ \alpha -1}e^{-\beta \theta} = 1 \Rightarrow \int_0^{\infty} \theta^{\ \alpha-1} e^{-\beta \theta} = {\frac {\Gamma (\alpha )}{\beta ^{\alpha }}}$$
+
+we let be:
+
+$$\color{red}{\alpha = \sum^n_{i=1}y_i+1}\ , \color{orange}{\beta = n+1}$$
+
+to get our final form:
+
+$$m(y)= {\frac{1}{{\prod_{i=1}^n y_i!}}} {\frac {\Gamma \color{red}{(\sum^n_{i=1}y_i+1)}}{\color{orange}{(n+1)} ^{\color{red}{(\sum^n_{i=1}y_i+1)}}}}$$
+
+```{r}
+alpha_post=sum(data)+1
+beta_post=length(data)+1
+
+exact_like=1/prod(factorial(data))*gamma(alpha_post)/(beta_post^alpha_post)
+exact_like
+```
+
+
+### b) By Monte Carlo approximation 
+
+*Using a sample form the posterior distribution and the harmonic mean approach. Try to evaluate random behavior by repeating/iterating the approximation $\hat{I}$ a sufficiently large number of times and show that the approximation tends to be (positively) biased.
+Use these simulations to evaluate approximately the corresponding variance and mean square error.*
+
+We can evaluate the marginal likelihood with the harmonic mean; here's how:
+$$\int \pi(\theta)d\theta =1 \Rightarrow \int \pi(\theta) \frac{\mathcal{L}(\theta)}{m(y)}\frac{m(y)}{\mathcal{L}(\theta)} d\theta =1\Rightarrow \frac{1}{m(y)} = \int \frac{1}{\mathcal{L}(\theta)} \underbrace{\frac{\mathcal{L}(\theta)\pi(\theta)}{m(y)}}_{\pi(\theta|y)} d\theta \Rightarrow \frac{1}{m(y)}= \mathbb{E}_{\pi(\theta|y)}\bigg[\frac{1}{\mathcal{L}(\theta)}\bigg]$$
+
+$$m(y)= \frac{1}{\mathbb{E}_{\pi(\theta|y)}\big[\frac{1}{\mathcal{L}(\theta)}\big]}\underbrace \longrightarrow_{\color{orchid}{for\  n \rightarrow \infty}} \frac{1}{\frac{1}{t}\sum^t_{i=1}\frac{1}{\mathcal{L}(\theta)}}$$
+
+In words, to get the marginal likelihood by harmonic mean approach, we simulate (MCMC sample) $θ_1, ..., θ_t$ from the posterior $π(θ∣x)$. For each such point, we compute the reciprocal of the likelihood, average these reciprocal likelihood values, and then take the reciprocal of the average as an estimate of the marginal likelihood of the model. 
+
+$$\hat{\mathcal{E}}^{HM} = \frac{1}{\frac{1}{t}\sum^t_{i=1}\frac{1}{\mathcal{L}(\theta)}}$$
+
+
+Posterior distribution:
+
+$$\pi(\theta|y) \propto \color{green}{e^{-n\theta} \theta^{\sum_{i=1}^ny_i}}\color{blue}{\theta^{\alpha-1}e^{-\beta\theta}} =$$
+$$ e^{-n\theta-\beta\theta}\theta^{\alpha-1 + \sum_{i=1}^n y_i} =$$
+$$\theta^{\overbrace{\sum_{i=1}^ny_i+\alpha}^{\alpha_{post}}-1}e^{-{\overbrace{(n+\beta)}^{\beta_{post}}\theta}\sim Gamma(\color{red}{\boldsymbol{\alpha_{post}} } = \sum_{i=1}^n y_i+\alpha_{prior},\color{orange}{\boldsymbol{\beta_{post}}} = n+\beta_{prior}}) $$
+```{r}
+posterior<-function(x) dgamma(x, alpha_post, beta_post)
+
+plot(prop.table(table(data)), col=cols[3], ylim=c(0, 1), xlim=c(-0.2,4), lwd=3)
+curve(posterior, add=T, col=cols[6], lwd=3)
+curve(prior, add=T, col=cols[9], lwd=3)
+legend('topright', legend = c('prior', 'posterior'),bty = 'n', col = c(cols[9],cols[6]), cex = 1, lwd = 8)
+```
+
+function to get the harmonic mean estimated likelihood:
+
+```{r}
+
+likelihood_func<- function(data, lambda) prod(dpois(x = data, lambda = lambda))
+like_func_vec<- Vectorize(FUN = likelihood_func, vectorize.args = 'lambda')
+
+harm.mean.like<- function(n=10000){
+  theta=rgamma(n,alpha_post, beta_post)
+  likelihoods=like_func_vec(data, lambda=theta)
+  return (harmonic.mean(likelihoods))
+}
+
+```
+
+Repeating to evaluate the behavior:
+
+```{r}
+Harmmean=c()
+for(i in 1:1000) Harmmean[i]=harm.mean.like()
+hist(Harmmean, col=cols[3], border='white',main = 'Estimation via Harmonic mean')
+abline(v = exact_like, col=cols[10], lwd=3, lty=3)
+abline(v=mean(Harmmean), col=cols[6], lwd=3, lty=3)
+legend('topleft', legend = c('exact likelihood', 'HM estimation'),bty = 'n', col = c(cols[10], cols[6]), cex = 1, lwd = 8)
+```
+
+We already see that it's positively biased.
+
+Bias:
+
+$$\mathbb{E}(\hat \theta)-\theta$$
+
+```{r}
+bias=mean(Harmmean)-exact_like
+bias
+```
+
+Positive bias confirmed.
+
+Variance (estimated via the empirical variance):
+
+$$\hat K = \frac{1}{n} \sum^t_{i=1} h(X_i)- \hat I_n^2$$
+
+```{r}
+varianz=var(Harmmean)
+varianz
+```
+
+MSE (with the previous variance estimator):
+
+$${\displaystyle \operatorname {MSE} ({\hat {\theta }})=\operatorname {Var} ({\hat {\theta }})+\left(\operatorname {Bias} ({\hat {\theta }},\theta )\right)^{2}}$$
+
+```{r}
+MSE=varianz+bias^2
+MSE
+```
+
+MSE (via original formula):
+$${\displaystyle \operatorname {MSE} ({\hat {\theta }})=\operatorname {E} {\big [}({\hat {\theta }}-\theta )^{2}{\big ]}}$$
+
+```{r}
+mean((Harmmean-exact_like)^2)
+```
+
+### c) By Monte Carlo Importance sampling 
+
+*Choosing an appropriate Cauchy distribution as auxiliary distribution for the simulation. Compare its performance with respect to the previous harmonic mean approach*.
+
+Importance Sampling is just Monte Carlo method which starts from reformulating the integral quantity of interest in a more general way stressing large arbitrariness of the distribution with respect to which one can take the expectation.
+
+$$I = \int h(\theta) \pi(\theta) d(\theta) = \mathbb{E}_{\pi}\bigg[h(\theta)\bigg]= \int h(\theta) \frac{\pi(\theta)}{q(\theta)}q(\theta) d(\theta)= \mathbb{E}_{q}\bigg[h(\theta) \frac{\pi(\theta)}{q(\theta)}\bigg]$$
+
+If:
+
+* $|I|<\infty$
+  
+* We are able to simulate $\theta_1,...,\theta_t$ i.i.d. from $q$ 
+  
+* The support of $q(\cdot)	\supseteq \pi$ 
+  
+$$\hat I = \frac1t\sum^t_{i=1}h(\theta_i)\frac{\pi(\theta_i)}{q(\theta_i)}= \frac{1}{t} \sum_{i=1}^t h(\theta_i)r(\theta_i) = \sum_{i=1}^t h(\theta_i)w(\theta_i)$$
+
+the function $r(\theta_i)$ s called importance function since it assigns a weight to each simulated $θ_i$ from q. The
+estimate turns out to be a ”weighted” average (although is not a proper weighting system since Neither $r_i$ nor $w_i$ are guaranteed to sum up to 1.)
+
+We can define a slightly different approximation, which works as long as the function $h(⋅)$ is not constant:
+
+$$\hat I = \frac{\sum^t_{i=1} h(\theta_i)w(\theta_i)}{\sum^t_{i=1} w(\theta_i)} = \sum^t_{i=1}h(\theta_i)\tilde w_i$$
+where $\tilde w_i$ is indeed a proper weighting system since it does sum up to 1.
+
+In practice: 
+
+find the best Cauchy: let's take as $\alpha$ the median of the posterior gamma.
+With trial and error it's easy to see that the best $\beta$ should be something between $0.2$ and $0.5$.
+We have also to truncate the Cauchy and eliminate negative values (since we have to be sure that The support of $q(\cdot)	\supseteq \pi$).
+
+```{r}
+curve(posterior, xlim=c(-1,6), col=cols[6], lwd=3, ylim=c(0, 1.5))
+curve(dcauchy(x, 2.2, 0.2)*(x>0), add=T, col=cols[3], lwd=2, lty=2)
+curve(dcauchy(x, 2.2, 0.5)*(x>0), add=T, col=cols[10], lwd=2, lty=2)
+legend('topright', legend = c('posterior', 'dcauchy(x, 2.2, 0.2)*(x>0)', 'dcauchy(x, 2.2, 0.5)*(x>0)'),bty = 'n', col = c(cols[6], cols[10], cols[3]), cex = 1, lwd = 8)
+```
+
+
+Let's find the best $\beta$ programmatically:
+
+```{r}
+#function that returnes the distance between the two distros given beta in a point
+distance<- function(x, beta=0.3){
+  posterior=dgamma(x, alpha_post, beta_post)
+  cauchyy=dcauchy(x, 2.2, beta)
+  return(abs(cauchyy-posterior))
+}
+
+#function that gives us the sum of the distance between 100000 points of the two distribution for every k
+bsearch<-function(beta){
+  beta_try=beta
+  x_grid=seq(0,5,length=100000)
+  return(sum(distance(x_grid,beta_try)))
+}
+
+#our optimal beta will be the beta that minimize this function.
+beta_star = optimize(bsearch, interval = c(0.2, 0.5), maximum = F)
+beta_star=beta_star$minimum
+beta_star
+```
+
+```{r}
+curve(posterior, xlim=c(-1,6), col=cols[6], lwd=3, ylim=c(0, 1.5))
+curve(dcauchy(x, 2.2, beta_star)*(x>0), add=T, col=cols[3], lwd=2.5)
+q<-function(x) dcauchy(x, 2.2, beta_star)
+legend('topright', legend = c('posterior', 'dcauchy(x, 2.2, 0.3382)*(x>0)'),bty = 'n', col = c(cols[6], cols[3]), cex = 1, lwd = 8)
+```
+
+Let's crunch the importance sampling machinery:
+
+```{r}
+
+likelihood_func<- function(data, lambda) prod(dpois(x = data, lambda = lambda))
+like_func_vec<- Vectorize(FUN = likelihood_func, vectorize.args = 'lambda')
+weigth_func <- function(x) prior(x)/q(x)
+importance_sampling<- function(n=10000){
+  theta=rcauchy(n, 2.2, beta_star)
+  theta=theta[theta>0]
+  result=(sum(like_func_vec(data, lambda=theta)*weigth_func(theta)))/sum(weigth_func(theta))
+  return (result)
+}
+
+```
+
+Repeating to evaluate the behavior:
+
+```{r}
+IS_result=c()
+for(i in 1:1000) IS_result[i]=importance_sampling()
+hist(IS_result, col=cols[3], border='white')
+abline(v = exact_like, col=cols[10], lwd=3, lty=3)
+abline(v=mean(IS_result), col=cols[6], lwd=3, lty=3)
+legend('topright', legend = c('exact likelihood', 'IS estimation'),bty = 'n', col = c(cols[10], cols[6]), cex = 1, lwd = 8)
+```
+
+```{r}
+bias=mean(IS_result)-exact_like
+bias
+```
+
+Variance (estimated via the empirical variance):
+
+
+```{r}
+varianz=var(IS_result)
+varianz
+```
+
+MSE (with the previous variance estimator):
+
+
+```{r}
+MSE=varianz+bias^2
+MSE
+```
+
+MSE (via original formula):
+
+```{r}
+mean((IS_result-exact_like)^2)
+```
+
+The results seems better. To show how better they are let's plot running means of the estimators:
+
+```{r}
+runningmean1=cumsum((Harmmean))/(1:length(Harmmean))
+runningmean2=cumsum((IS_result))/(1:length(IS_result))
+plot(1:1000,runningmean1,type="l", ylim=c(0.2*10^-7.9, 0.9*10^-7.8), col=cols[3], lwd=3)
+lines(1:1000,runningmean2,col=cols[6], lwd=3)
+abline(h=exact_like, lty=2, col=cols[9], lwd=3)
+legend('topleft', legend = c('IS estimation', 'HM estimation', 'exact'),bty = 'n', col = c(cols[3], cols[6], cols[9]), cex = 1, lwd = 8)
+```
+
+We see that the IS estimator is (almost) unbiased, and it's very performant in his job; it converges very quickly the true value.
+
+
+
+
+
+
+
